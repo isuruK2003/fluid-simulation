@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FFS</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #111;
+        overflow: hidden;
+      }
+
+      .flex-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="flex-container">
+      <canvas id="canvas"></canvas>
+    </div>
+    <config-panel id="config-panel"></config-panel>
+    <script type="module" src="./src/components/config-panel.js"></script>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
