@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stable Fluids</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0a0a0a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: sans-serif;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        cursor: crosshair;
+      }
+      #hud {
+        position: fixed;
+        bottom: 16px;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 8px 18px;
+        border-radius: 999px;
+        border: 0.5px solid rgba(255, 255, 255, 0.12);
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      label {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      input[type="range"] {
+        width: 72px;
+        accent-color: #aaa;
+      }
+      select {
+        font-size: 11px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #ccc;
+        border: 0.5px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        padding: 2px 6px;
+      }
+      button {
+        font-size: 11px;
+        padding: 3px 12px;
+        border-radius: 999px;
+        border: 0.5px solid rgba(255, 255, 255, 0.25);
+        background: transparent;
+        color: #ccc;
+        cursor: pointer;
+      }
+      button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      #info {
+        position: fixed;
+        top: 12px;
+        right: 14px;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.25);
+        text-align: right;
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud">
+      <label>Viscosity</label>
+      <input
+        type="range"
+        id="visc"
+        min="0"
+        max="0.0005"
+        step="0.00001"
+        value="0.00001"
+      />
+      <label>Diffusion</label>
+      <input
+        type="range"
+        id="diff"
+        min="0"
+        max="0.0002"
+        step="0.000005"
+        value="0"
+      />
+      <label>Density</label>
+      <input type="range" id="damt" min="50" max="500" step="10" value="200" />
+      <label>Color</label>
+      <select id="cmode">
+        <option value="gray">Smoke</option>
+        <option value="fire">Fire</option>
+        <option value="plasma">Plasma</option>
+        <option value="teal">Teal</option>
+      </select>
+      <button onclick="reset()">Reset</button>
+    </div>
+    <div id="info">
+      Navier-Stokes · Jos Stam 1999<br />drag to add smoke &amp; force
+    </div>
+    <script>
+      // ── Grid setup ──────────────────────────────────────────────────────────────
+      const N = 128;
+      const SZ = (N + 2) * (N + 2);
+      const IX = (i, j) => i + (N + 2) * j;
+
+      let u, v, uP, vP, dens, densP;
+
+      function reset() {
+        u = new Float32Array(SZ);
+        v = new Float32Array(SZ);
+        uP = new Float32Array(SZ);
+        vP = new Float32Array(SZ);
+        dens = new Float32Array(SZ);
+        densP = new Float32Array(SZ);
+      }
+      reset();
+
+      // ── Solver ──────────────────────────────────────────────────────────────────
+      function addSource(x, s, dt) {
+        for (let i = 0; i < SZ; i++) x[i] += dt * s[i];
+      }
+
+      function setBnd(b, x) {
+        for (let i = 1; i <= N; i++) {
+          x[IX(0, i)] = b === 1 ? -x[IX(1, i)] : x[IX(1, i)];
+          x[IX(N + 1, i)] = b === 1 ? -x[IX(N, i)] : x[IX(N, i)];
+          x[IX(i, 0)] = b === 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
+          x[IX(i, N + 1)] = b === 2 ? -x[IX(i, N)] : x[IX(i, N)];
+        }
+        x[IX(0, 0)] = 0.5 * (x[IX(1, 0)] + x[IX(0, 1)]);
+        x[IX(0, N + 1)] = 0.5 * (x[IX(1, N + 1)] + x[IX(0, N)]);
+        x[IX(N + 1, 0)] = 0.5 * (x[IX(N, 0)] + x[IX(N + 1, 1)]);
+        x[IX(N + 1, N + 1)] = 0.5 * (x[IX(N, N + 1)] + x[IX(N + 1, N)]);
+      }
+
+      function linSolve(b, x, x0, a, c) {
+        const inv = 1 / c;
+        for (let k = 0; k < 20; k++) {
+          for (let i = 1; i <= N; i++) {
+            for (let j = 1; j <= N; j++) {
+              x[IX(i, j)] =
+                (x0[IX(i, j)] +
+                  a *
+                    (x[IX(i - 1, j)] +
+                      x[IX(i + 1, j)] +
+                      x[IX(i, j - 1)] +
+                      x[IX(i, j + 1)])) *
+                inv;
+            }
+          }
+          setBnd(b, x);
+        }
+      }
+
+      function diffuse(b, x, x0, diff, dt) {
+        const a = dt * diff * N * N;
+        linSolve(b, x, x0, a, 1 + 4 * a);
+      }
+
+      function advect(b, d, d0, u, v, dt) {
+        const dt0 = dt * N;
+        for (let i = 1; i <= N; i++) {
+          for (let j = 1; j <= N; j++) {
+            let x = i - dt0 * u[IX(i, j)];
+            let y = j - dt0 * v[IX(i, j)];
+            if (x < 0.5) x = 0.5;
+            if (x > N + 0.5) x = N + 0.5;
+            if (y < 0.5) y = 0.5;
+            if (y > N + 0.5) y = N + 0.5;
+            const i0 = Math.floor(x),
+              i1 = i0 + 1;
+            const j0 = Math.floor(y),
+              j1 = j0 + 1;
+            const s1 = x - i0,
+              s0 = 1 - s1;
+            const t1 = y - j0,
+              t0 = 1 - t1;
+            d[IX(i, j)] =
+              s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+              s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
+          }
+        }
+        setBnd(b, d);
+      }
+
+      function project(u, v, p, div) {
+        const h = 1 / N;
+        for (let i = 1; i <= N; i++) {
+          for (let j = 1; j <= N; j++) {
+            div[IX(i, j)] =
+              -0.5 *
+              h *
+              (u[IX(i + 1, j)] -
+                u[IX(i - 1, j)] +
+                v[IX(i, j + 1)] -
+                v[IX(i, j - 1)]);
+            p[IX(i, j)] = 0;
+          }
+        }
+        setBnd(0, div);
+        setBnd(0, p);
+        linSolve(0, p, div, 1, 4);
+        for (let i = 1; i <= N; i++) {
+          for (let j = 1; j <= N; j++) {
+            u[IX(i, j)] -= (0.5 * (p[IX(i + 1, j)] - p[IX(i - 1, j)])) / h;
+            v[IX(i, j)] -= (0.5 * (p[IX(i, j + 1)] - p[IX(i, j - 1)])) / h;
+          }
+        }
+        setBnd(1, u);
+        setBnd(2, v);
+      }
+
+      function velStep(dt, visc) {
+        addSource(u, uP, dt);
+        addSource(v, vP, dt);
+        [uP, u] = [u, uP];
+        diffuse(1, u, uP, visc, dt);
+        [vP, v] = [v, vP];
+        diffuse(2, v, vP, visc, dt);
+        project(u, v, uP, vP);
+        [uP, u] = [u, uP];
+        [vP, v] = [v, vP];
+        advect(1, u, uP, uP, vP, dt);
+        advect(2, v, vP, uP, vP, dt);
+        project(u, v, uP, vP);
+      }
+
+      function densStep(dt, diff) {
+        addSource(dens, densP, dt);
+        [densP, dens] = [dens, densP];
+        diffuse(0, dens, densP, diff, dt);
+        [densP, dens] = [dens, densP];
+        advect(0, dens, densP, u, v, dt);
+      }
+
+      // ── Canvas & rendering ───────────────────────────────────────────────────────
+      const cv = document.getElementById("c");
+      const ctx = cv.getContext("2d");
+      let W, H, cellW, cellH;
+
+      function resize() {
+        W = cv.width = window.innerWidth;
+        H = cv.height = window.innerHeight;
+        cellW = W / N;
+        cellH = H / N;
+      }
+      resize();
+      window.addEventListener("resize", resize);
+
+      const colorModes = {
+        gray: (d) => {
+          const v = Math.min(255, (d * 255) | 0);
+          return [v, v, v];
+        },
+        fire: (d) => {
+          const t = Math.min(1, d);
+          const r = Math.min(255, t * 3 * 255) | 0;
+          const g = Math.min(255, Math.max(0, (t * 3 - 1) * 255)) | 0;
+          const b = Math.min(255, Math.max(0, (t * 3 - 2) * 255)) | 0;
+          return [r, g, b];
+        },
+        plasma: (d) => {
+          const t = Math.min(1, d);
+          const r = Math.min(255, Math.sin(t * Math.PI) * 255) | 0;
+          const g = Math.min(255, Math.sin(t * Math.PI * 2) * 128 + 128) | 0;
+          const b = Math.min(255, (1 - t) * 255) | 0;
+          return [r, g, b];
+        },
+        teal: (d) => {
+          const t = Math.min(1, d);
+          return [
+            Math.min(255, (t * 0.3 * 255) | 0),
+            Math.min(255, (t * 255) | 0),
+            Math.min(255, (t * 0.8 * 255) | 0),
+          ];
+        },
+      };
+
+      let imgData, pixels;
+      function initImg() {
+        imgData = ctx.createImageData(W, H);
+        pixels = imgData.data;
+      }
+      initImg();
+      window.addEventListener("resize", initImg);
+
+      function draw() {
+        const mode = document.getElementById("cmode").value;
+        const colorFn = colorModes[mode];
+
+        for (let j = 1; j <= N; j++) {
+          for (let i = 1; i <= N; i++) {
+            const d = dens[IX(i, j)];
+            const [r, g, b] = colorFn(d);
+            const px = i - 1,
+              py = j - 1;
+            // map grid cell to screen pixels
+            const x0 = ((px / N) * W) | 0,
+              x1 = (((px + 1) / N) * W) | 0;
+            const y0 = ((py / N) * H) | 0,
+              y1 = (((py + 1) / N) * H) | 0;
+            for (let sy = y0; sy < y1; sy++) {
+              for (let sx = x0; sx < x1; sx++) {
+                const idx = (sy * W + sx) * 4;
+                pixels[idx] = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
+                pixels[idx + 3] = 255;
+              }
+            }
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+
+      // ── Mouse interaction ────────────────────────────────────────────────────────
+      let mx = -1,
+        my = -1,
+        lx = -1,
+        ly = -1,
+        down = false;
+
+      cv.addEventListener("mousedown", (e) => {
+        down = true;
+        lx = e.clientX;
+        ly = e.clientY;
+      });
+      cv.addEventListener("mouseup", () => (down = false));
+      cv.addEventListener("mouseleave", () => (down = false));
+      cv.addEventListener("mousemove", (e) => {
+        if (down) {
+          mx = e.clientX;
+          my = e.clientY;
+        }
+      });
+
+      // Touch
+      cv.addEventListener(
+        "touchstart",
+        (e) => {
+          e.preventDefault();
+          const t = e.touches[0];
+          down = true;
+          lx = t.clientX;
+          ly = t.clientY;
+        },
+        { passive: false },
+      );
+      cv.addEventListener("touchend", () => (down = false));
+      cv.addEventListener(
+        "touchmove",
+        (e) => {
+          e.preventDefault();
+          const t = e.touches[0];
+          mx = t.clientX;
+          my = t.clientY;
+        },
+        { passive: false },
+      );
+
+      function applyMouse() {
+        if (!down || mx < 0) return;
+        const gi = Math.floor((mx / W) * N) + 1;
+        const gj = Math.floor((my / H) * N) + 1;
+        const damt = parseFloat(document.getElementById("damt").value);
+
+        // add density in a small radius
+        for (let di = -2; di <= 2; di++) {
+          for (let dj = -2; dj <= 2; dj++) {
+            const ii = gi + di,
+              jj = gj + dj;
+            if (ii >= 1 && ii <= N && jj >= 1 && jj <= N) {
+              densP[IX(ii, jj)] += damt * Math.exp(-(di * di + dj * dj) * 0.5);
+            }
+          }
+        }
+
+        // add velocity from mouse movement
+        const fu = (mx - lx) * 5;
+        const fv = (my - ly) * 5;
+        for (let di = -1; di <= 1; di++) {
+          for (let dj = -1; dj <= 1; dj++) {
+            const ii = gi + di,
+              jj = gj + dj;
+            if (ii >= 1 && ii <= N && jj >= 1 && jj <= N) {
+              uP[IX(ii, jj)] += fu;
+              vP[IX(ii, jj)] += fv;
+            }
+          }
+        }
+        lx = mx;
+        ly = my;
+      }
+
+      // ── Auto emitter (bottom center, rising) ─────────────────────────────────────
+      function autoEmit() {
+        const damt = parseFloat(document.getElementById("damt").value);
+        const cx = (N / 2) | 0;
+        const cy = N - 4;
+        for (let di = -2; di <= 2; di++) {
+          const ii = cx + di;
+          densP[IX(ii, cy)] += damt * 0.6 * Math.exp(-di * di * 0.4);
+          vP[IX(ii, cy)] -= damt * 0.04;
+          uP[IX(ii, cy)] += (Math.random() - 0.5) * damt * 0.015;
+        }
+      }
+
+      // ── Main loop ────────────────────────────────────────────────────────────────
+      let last = 0;
+      function loop(ts) {
+        const dt = Math.min((ts - last) / 1000, 0.033);
+        last = ts;
+
+        const visc = parseFloat(document.getElementById("visc").value);
+        const diff = parseFloat(document.getElementById("diff").value);
+
+        applyMouse();
+        autoEmit();
+
+        velStep(dt, visc);
+        densStep(dt, diff);
+
+        // clear prev sources
+        uP.fill(0);
+        vP.fill(0);
+        densP.fill(0);
+
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame((ts) => {
+        last = ts;
+        loop(ts);
+      });
+    </script>
+  </body>
+</html>
