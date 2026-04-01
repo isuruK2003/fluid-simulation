@@ -2,6 +2,7 @@ import { Grid } from "./core/grid.js";
 import { Renderer } from "./core/renderer.js";
 import { Solver } from "./core/solver.js";
 
+const MODE = "density";
 const WIDTH = Math.min(window.innerWidth, 640);
 const HEIGHT = Math.min(window.innerHeight, 480);
 
@@ -49,6 +50,18 @@ function main() {
   const panel = document.querySelector("config-panel");
 
   panel.fields = [
+    {
+      id: "mode",
+      key: "mode",
+      label: "Mode",
+      type: "select",
+      options: [
+        { value: "density", label: "Density (Smoke)" },
+        { value: "velocity", label: "Velocity Field" },
+        { value: "pressure", label: "Pressure Field" },
+      ],
+      default: MODE,
+    },
     {
       id: "diffusion_rate",
       key: "diffusionRate",
@@ -137,6 +150,9 @@ function main() {
 
   panel.addEventListener("config-change", ({ detail }) => {
     switch (detail.key) {
+      case "mode":
+        renderer.options.mode = detail.value;
+        break;
       case "diffusionRate":
         solver.options.diffusion.rate = detail.value;
         break;
