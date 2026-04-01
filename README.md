@@ -1,6 +1,8 @@
 # Eulerian Grid-Based Fluid Simulation
 
-![Fluid simulation preview](assets/banner.png)
+<p align="center">
+  <img src="assets/banner.png" alt="Fluid simulation preview" />
+</p>
 
 [Live Demo](https://isuruk2003.github.io/fluid-simulation/)
 
