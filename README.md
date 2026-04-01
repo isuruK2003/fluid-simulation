@@ -2,6 +2,8 @@
 
 ![Fluid simulation preview](assets/banner.png)
 
+[Live Demo](https://isuruk2003.github.io/fluid-simulation/)
+
 This project is an interactive real-time 2D fluid simulation that brings fluid dynamics to your browser. Built on Jos Stam's landmark **"Stable Fluids"** paper, it visualizes incompressible flow using a grid-based Eulerian approach—no particle systems, just pure mathematics rendered on canvas.
 
 The simulation models smoke or dye moving through air, driven by velocity fields and pressure gradients. Move your mouse, click and drag, or watch the built-in nozzle emitter create swirling, turbulent patterns that emerge naturally from the underlying physics.
