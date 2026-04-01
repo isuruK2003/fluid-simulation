@@ -1,6 +1,6 @@
 # Eulerian Grid-Based Fluid Simulation
 
-![Fluid simulation preview](screenshot.png)
+![Fluid simulation preview](assets/banner.png)
 
 This project is an interactive real-time 2D fluid simulation that brings fluid dynamics to your browser. Built on Jos Stam's landmark **"Stable Fluids"** paper, it visualizes incompressible flow using a grid-based Eulerian approach—no particle systems, just pure mathematics rendered on canvas.
 
